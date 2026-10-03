@@ -29,6 +29,33 @@ plt.ylabel("Beam Angle (deg)")
 plt.title("Radar Beam Angle vs Time")
 plt.grid(True)
 
+# True vs estimated NED state.
+TrueState = TargetTrajectory[:, : len(Sim1Outputs["Time"])]
+EstState = Sim1Outputs["EstTargetStateHistory"]
+StateLabels = ["North Position (m)", "Down Position (m)", "North Velocity (m/s)", "Down Velocity (m/s)"]
+fig_state, axes = plt.subplots(2, 2, sharex=True, figsize=(11, 7))
+for k, axis in enumerate(axes.flat):
+    axis.plot(Sim1Outputs["Time"], TrueState[k], "k", label="True")
+    axis.plot(Sim1Outputs["Time"], EstState[k], "r--", label="Estimate")
+    axis.set_ylabel(StateLabels[k])
+    axis.grid(True)
+    if k in (2, 3):
+        axis.set_xlabel("Time (s)")
+axes[0, 0].legend()
+fig_state.suptitle("True vs Estimated Target State (NED)")
+
+# Estimation covariance (1-sigma of each state).
+CovarHist = Sim1Outputs["CovarHist"]
+SigmaLabels = ["North Pos 1-sigma (m)", "Down Pos 1-sigma (m)", "North Vel 1-sigma (m/s)", "Down Vel 1-sigma (m/s)"]
+fig_cov, cov_axes = plt.subplots(2, 2, sharex=True, figsize=(11, 7))
+for k, axis in enumerate(cov_axes.flat):
+    axis.semilogy(Sim1Outputs["Time"], np.sqrt(CovarHist[k, k, :]))
+    axis.set_ylabel(SigmaLabels[k])
+    axis.grid(True)
+    if k in (2, 3):
+        axis.set_xlabel("Time (s)")
+fig_cov.suptitle("Estimation Covariance History")
+
 # Radar beam sweep and target trajectory.
 TargetX = TargetTrajectory[0, :]
 TargetZ = TargetTrajectory[1, :]
@@ -39,29 +66,39 @@ BeamWidth = RadarParams["BeamWidth"]
 BeamRange = np.max(np.sqrt(TargetX**2 + TargetZ**2))
 
 fig, ax = plt.subplots()
-ax.plot(TargetX, TargetZ, "k", linewidth=2)
+TargetPath, = ax.plot([], [], "k-", linewidth=2, label="True")
+TargetPosition, = ax.plot([], [], "ko", markersize=5)
+EstPath, = ax.plot([], [], "r--", linewidth=1.5, label="Estimate")
+EstPosition, = ax.plot([], [], "r^", markersize=6)
 UpperBeam, = ax.plot([0, 0], [0, 0], "b-", linewidth=1.5)
 LowerBeam, = ax.plot([0, 0], [0, 0], "b-", linewidth=1.5)
 Cone = Polygon([[0, 0], [0, 0], [0, 0]], color="b", alpha=0.15, edgecolor="none")
 ax.add_patch(Cone)
 ax.set_xlabel("X Position")
-ax.set_ylabel("Z Position")
+ax.set_ylabel("Z Position (NED, negative up)")
 ax.set_title("Radar Beam Sweep")
-ax.axis("equal")
+ax.set_xlim(-BeamRange, BeamRange)
+ax.set_ylim(BeamRange, -BeamRange)  # inverted so negative Z is up
+ax.set_aspect("equal", adjustable="box")
 ax.grid(True)
+ax.legend(loc="upper right")
 
-AnimationStep = 20
+AnimationStep = 400
 for i in range(0, len(Time), AnimationStep):
     RadarAngle = BeamAngleHistory[i] + RadarPitchAngle
     UpperAngle = RadarAngle + BeamWidth
     LowerAngle = RadarAngle - BeamWidth
     UpperX = BeamRange * np.cos(UpperAngle)
-    UpperZ = BeamRange * np.sin(UpperAngle)
+    UpperZ = -BeamRange * np.sin(UpperAngle)
     LowerX = BeamRange * np.cos(LowerAngle)
-    LowerZ = BeamRange * np.sin(LowerAngle)
+    LowerZ = -BeamRange * np.sin(LowerAngle)
     UpperBeam.set_data([0, UpperX], [0, UpperZ])
     LowerBeam.set_data([0, LowerX], [0, LowerZ])
     Cone.set_xy([[0, 0], [UpperX, UpperZ], [LowerX, LowerZ]])
+    TargetPath.set_data(TargetX[: i + 1], TargetZ[: i + 1])
+    TargetPosition.set_data([TargetX[i]], [TargetZ[i]])
+    EstPath.set_data(EstState[0, : i + 1], EstState[1, : i + 1])
+    EstPosition.set_data([EstState[0, i]], [EstState[1, i]])
     ax.set_title(f"Radar Beam Sweep - t = {Time[i]:.2f} s")
     fig.canvas.draw_idle()
     plt.pause(0.001)

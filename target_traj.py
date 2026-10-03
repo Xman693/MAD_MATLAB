@@ -5,7 +5,7 @@ from RK4 import RK4
 def target_traj(SimParams):
     # Initial position and velocity (NED).
     p0 = np.array([100000.0, -50000.0])
-    v0 = np.array([250.0, 0.0])
+    v0 = np.array([-250.0, 0.0])
     x0 = np.concatenate((p0, v0))
 
     Tmax = SimParams["Tmax"]

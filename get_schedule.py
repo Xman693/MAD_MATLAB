@@ -2,7 +2,7 @@ def get_schedule(obj, clocks):
     dt = obj.SimParams["dt"]
     rates = obj.UpdateRates
 
-    for name in ("radar_beam", "radar_measurement", "target_estimation"):
+    for name in ("radar_beam", "radar_measurement", "target_estimation", "fire_control"):
         if name not in clocks:
             clocks[name] = 0
 
@@ -15,6 +15,9 @@ def get_schedule(obj, clocks):
     )
     schedule["RadarTargetStateEstDue"], clocks["target_estimation"] = _tick(
         clocks["target_estimation"], rates["target_estimation"], dt
+    )
+    schedule["FireControlDue"], clocks["fire_control"] = _tick(
+        clocks["fire_control"], rates["fire_control"], dt
     )
     return schedule, clocks
 

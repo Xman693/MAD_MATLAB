@@ -48,10 +48,15 @@ class Sim:
                     self.UpdateRates["target_estimation"],
                     self.RadarParams["MeasCovar"],
                     rawMeasurement,
+                    beamAngle + self.RadarParams["TrueRadarPitchAngle"],
                 )
             if schedule["RadarGimbleDue"]:
+                targetDetected, _ = Radar.TargetDetected(trueTargetState, beamAngle)
                 beamAngle, directionFlag = Radar.get_radar_gimble(
-                    beamAngle, rawMeasurement, directionFlag, targetStateEst
+                    beamAngle,
+                    targetDetected,
+                    directionFlag,
+                    targetStateEst,
                 )
 
             if rawMeasurement is not None:

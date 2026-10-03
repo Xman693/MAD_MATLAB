@@ -5,6 +5,7 @@ class estimation:
     def __init__(self, EstimationParams):
         self.EstimationParams = EstimationParams
 
+
     def get_ABT_KF_MODELS(self, ProcessingTime, MeasCovar):
         A = self.EstimationParams["ABT"]["A"]
         F = np.eye(4) + A * ProcessingTime
@@ -30,7 +31,14 @@ class estimation:
         )
 
     def get_target_state_est(
-        self, TargetType, TargetStateEst, P, ProcessingTimeInterval, MeasCovar, RawMeasurements
+        self,
+        TargetType,
+        TargetStateEst,
+        P,
+        ProcessingTimeInterval,
+        MeasCovar,
+        RawMeasurements,
+        RadarAngle,
     ):
         if TargetType != "ABT":
             raise ValueError(f"Unsupported target type: {TargetType}")
@@ -40,9 +48,10 @@ class estimation:
             if RawMeasurements is None:
                 return None, None
             range_ = RawMeasurements["Range"]
-            los = RawMeasurements["LineOfSight"]
+            # Radar LOS is -atan2(z, x) relative to the beam, so NED angle is -(los + RadarAngle).
+            ned_angle = RawMeasurements["LineOfSight"] + RadarAngle
             TargetStateEst = np.array(
-                [range_ * np.cos(los), -range_ * np.sin(los), 0.0, 0.0]
+                [range_ * np.cos(ned_angle), -range_ * np.sin(ned_angle), 0.0, 0.0]
             )
             P = 1e6 * np.eye(4)
             return TargetStateEst, P
@@ -62,7 +71,7 @@ class estimation:
         px, pz, vx, vz = TargetStateEst
         range_ = max(np.linalg.norm([px, pz]), np.finfo(float).eps)
         predicted = np.array(
-            [range_, (px * vx + pz * vz) / range_, -np.arctan2(pz, px)]
+            [range_, (px * vx + pz * vz) / range_, -np.arctan2(pz, px) - RadarAngle]
         )
         H = self.get_H_model(TargetStateEst)
         innovation = measurement - predicted

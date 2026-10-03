@@ -13,12 +13,12 @@ class radar:
             BeamAngle,
             self.RadarParams["NomRadarPitchAngle"],
         )
-        line_of_sight = np.arctan2(TargetPosRadar[1], TargetPosRadar[0])
+        line_of_sight = -np.arctan2(TargetPosRadar[1], TargetPosRadar[0])
         step = np.deg2rad(1)
         if line_of_sight > step:
-            BeamAngle -= step
-        elif line_of_sight < -step:
             BeamAngle += step
+        elif line_of_sight < -step:
+            BeamAngle -= step
         return BeamAngle
 
     def BeamSteeringSearch(self, BeamAngle, DirectionFlag):
@@ -80,9 +80,11 @@ class radar:
         return None, TrueRadarMeasurement
 
     def get_radar_gimble(
-        self, BeamAngle, RawRadarMeasurement, DirectionFlag, TargetStateEst
+        self, BeamAngle, TargetDetected, DirectionFlag, TargetStateEst
     ):
-        if RawRadarMeasurement is None or TargetStateEst is None:
+        if not TargetDetected:
             return self.BeamSteeringSearch(BeamAngle, DirectionFlag)
+        if TargetStateEst is None:
+            return BeamAngle, DirectionFlag
         BeamAngle = self.BeamSteeringTrack(TargetStateEst, BeamAngle)
         return BeamAngle, DirectionFlag
