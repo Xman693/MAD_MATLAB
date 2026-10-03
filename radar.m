@@ -1,131 +1,73 @@
-
 classdef radar
     properties
-     RadarParams
-       
+        RadarParams
     end
 
     methods
-        function obj = Radar(RadarParams)
-          obj.RadarParams = RadarParams;
-
-        end
-
-        function [Mode, TrueMeasurements] = SetMode(obj, TrueTarget, BeamAngle)
-
-           [TargetDetectionTrue, TrueMeasurements] = obj.TargetDetected(TrueTarget, BeamAngle); 
-
-            if TargetDetectionTrue
-                Mode = "track";
-            else
-                Mode = "search";
-            end
+        function obj = radar(RadarParams)
+            obj.RadarParams = RadarParams;
         end
 
         function BeamAngle = BeamSteeringTrack(obj, TargetEstNed, BeamAngle)
-
-            TargetPosNED = TargetEstNed(1:2); 
-
-            TargetPosRadar = RadarToNed(1, TargetPosNED, BeamAngle, obj.RadarParams.NomRadarPitchAngle); 
-
-           
-            LineOfSight = atan2(TargetPosRadar(2), TargetPosRadar(1)); % if using seeker z up, 
-
-            if LineOfSight > deg2rad(1)
-                BeamAngle = BeamAngle - deg2rad(1);
-            elseif LineOfSight < deg2rad(1)
-                BeamAngle = BeamAngle + deg2rad(1); 
-            else 
-                BeamAngle = 0;
+            TargetPosRadar = RadarToNed(1, TargetEstNed(1:2), BeamAngle, obj.RadarParams.NomRadarPitchAngle);
+            lineOfSight = atan2(TargetPosRadar(2), TargetPosRadar(1));
+            step = deg2rad(1);
+            if lineOfSight > step
+                BeamAngle = BeamAngle - step;
+            elseif lineOfSight < -step
+                BeamAngle = BeamAngle + step;
             end
-
-
-
-
         end
 
         function [BeamAngle, DirectionFlag] = BeamSteeringSearch(obj, BeamAngle, DirectionFlag)
-
-            % Bounds BeamAngle Between +FOV and -RadarPitchAngle (could not
-            % be optimal for certain radar emplacements aka high
-            % elevation)
-
-            % checks if change in beam search direction is needed
-            if BeamAngle >= obj.RadarParams.FOV
+            lowerLimit = -obj.RadarParams.NomRadarPitchAngle;
+            upperLimit = obj.RadarParams.FOV;
+            step = deg2rad(1);
+            if BeamAngle >= upperLimit
                 DirectionFlag = "CW";
+            elseif BeamAngle <= lowerLimit
+                DirectionFlag = "CCW";
             end
-
-            if BeamAngle <= obj.RadarParams.NomRadarPitchAngle
-                DirectionFlag = "CCW"; 
-            end
-
             if DirectionFlag == "CCW"
-                BeamAngle = BeamAngle + deg2rad(1); % add 1 degree 
+                BeamAngle = min(BeamAngle + step, upperLimit);
             else
-                BeamAngle = BeamAngle - deg2rad(1); 
+                BeamAngle = max(BeamAngle - step, lowerLimit);
             end
-
         end
 
-
-
         function [TargetDetectionTrue, TrueMeasurements] = TargetDetected(obj, TrueTargetNED, BeamAngle)
-
-           TrueTargetPos = RadarToNed(1,TrueTargetNED(1:2), BeamAngle, obj.RadarParams.NomRadarPitchAngle); 
-           TrueTargetVel = RadarToNed(1,TrueTargetNED(3:4), BeamAngle, obj.RadarParams.NomRadarPitchAngle);
-
-           TrueMeasurements.LineOfSight = -atan2(TrueTargetPos(2), TrueTargetPos(1)); 
-           TrueMeasurements.Range = norm(TrueTargetPos); 
-           TrueMeasurements.RangeRate = dot(TrueTargetPos, TrueTargetVel)/Range; 
-
-           if Range > obj.RadarParams.MaxRange
-               TargetDetectionTrue = false; 
-           elseif abs(LineOfSight) > obj.RadarParams.BeamWidth
-               TargetDetectionTrue = false; 
-           else 
-               TargetDetectionTrue = true; 
-           end 
-           
-
+            TrueTargetPos = RadarToNed(1, TrueTargetNED(1:2), BeamAngle, obj.RadarParams.TrueRadarPitchAngle);
+            TrueTargetVel = RadarToNed(1, TrueTargetNED(3:4), BeamAngle, obj.RadarParams.TrueRadarPitchAngle);
+            TrueMeasurements.Range = norm(TrueTargetPos);
+            TrueMeasurements.LineOfSight = -atan2(TrueTargetPos(2), TrueTargetPos(1));
+            TrueMeasurements.RangeRate = dot(TrueTargetPos, TrueTargetVel) / max(TrueMeasurements.Range, eps);
+            TargetDetectionTrue = TrueMeasurements.Range <= obj.RadarParams.MaxRange && ...
+                abs(TrueMeasurements.LineOfSight) <= obj.RadarParams.BeamWidth;
         end
 
         function RawMeasurements = GetRawMeasurement(obj, TrueMeasurements)
-
-         sigma_los = sqrt(obj.RadarParams.MeasCovar(1,1)); 
-         sigma_range = sqrt(obj.RadarParams.MeasCovar(2,2)); 
-         sigma_range_rate = sqrt(obj.RadarParams.MeasCovar(3,3)); 
-
-         RawMeasurements.LineOfSight = TrueMeasurements.LineOfSight + sigma_los*randn; 
-         RawMeasurements.Range = TrueMeasurements.Range * sigma_range * randn; 
-         RawMeasurements.RangeRate = TrueMeasurements.RangeRate * sigma_range_rate * randn; 
-
+            covariance = obj.RadarParams.MeasCovar;
+            noise = chol(covariance + eps*eye(3), 'lower') * randn(3,1);
+            RawMeasurements.Range = TrueMeasurements.Range + noise(1);
+            RawMeasurements.RangeRate = TrueMeasurements.RangeRate + noise(2);
+            RawMeasurements.LineOfSight = TrueMeasurements.LineOfSight + noise(3);
         end
 
-% called in the main function
         function [RawRadarMeasurement, TrueRadarMeasurement] = get_radar_measurement(obj, BeamAngle, TrueTargetState)
-
-            [TargetDetected, TrueRadarMeasurement] = radar.TargetDetected(obj, TrueTargetState, BeamAngle); 
-
-            if TargetDetected
+            [detected, TrueRadarMeasurement] = obj.TargetDetected(TrueTargetState, BeamAngle);
+            if detected
                 RawRadarMeasurement = obj.GetRawMeasurement(TrueRadarMeasurement);
             else
-                RawRadarMeasurement = []; % no measurements (dropped track / no track)
+                RawRadarMeasurement = [];
             end
         end
-    
+
         function [BeamAngle, DirectionFlag] = get_radar_gimble(obj, BeamAngle, RawRadarMeasurement, DirectionFlag, TargetStateEst)
-
-             if RawRadarMeasurement == []
-
-                 [BeamAngle, DirectionFlag] = radar.BeamSteeringSearch(obj, BeamAngle, DirectionFlag); 
-             else 
-                 BeamAngle = radar.BeamSteeringTrack(obj,TargetStateEst, BeamAngle);
-
-             end
-             
+            if isempty(RawRadarMeasurement) || isempty(TargetStateEst)
+                [BeamAngle, DirectionFlag] = obj.BeamSteeringSearch(BeamAngle, DirectionFlag);
+            else
+                BeamAngle = obj.BeamSteeringTrack(TargetStateEst, BeamAngle);
+            end
         end
-
-
-
     end
 end
