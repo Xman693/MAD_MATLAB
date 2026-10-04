@@ -7,17 +7,19 @@ from get_estimation_params import get_estimation_params
 from get_radar_params import get_radar_params
 from get_sim_params import get_sim_params
 from get_update_rates import get_update_rates
+from get_ground_params import get_ground_params
 from target_traj import target_traj
 
 
 SimParams = get_sim_params()
 RadarParams = get_radar_params()
 EstimationParams = get_estimation_params()
+GroundParams = get_ground_params()
 UpdateRates = get_update_rates()
 TargetTime, TargetHistory = target_traj(SimParams)
 TargetTrajectory = TargetHistory.T
 
-Sim1 = Sim(SimParams, RadarParams, UpdateRates, TargetTrajectory, EstimationParams)
+Sim1 = Sim(SimParams, RadarParams, UpdateRates, TargetTrajectory, EstimationParams, GroundParams)
 Sim1Outputs = Sim1.RunSim()
 
 # Fire control, uplink, seeker, guidance, and autopilot are future work.
@@ -61,6 +63,7 @@ TargetX = TargetTrajectory[0, :]
 TargetZ = TargetTrajectory[1, :]
 Time = Sim1Outputs["Time"]
 BeamAngleHistory = Sim1Outputs["BeamAngleHistory"]
+LaunchPointHistory = Sim1Outputs["LaunchPointHistory"]
 RadarPitchAngle = RadarParams["TrueRadarPitchAngle"]
 BeamWidth = RadarParams["BeamWidth"]
 BeamRange = np.max(np.sqrt(TargetX**2 + TargetZ**2))
@@ -70,6 +73,7 @@ TargetPath, = ax.plot([], [], "k-", linewidth=2, label="True")
 TargetPosition, = ax.plot([], [], "ko", markersize=5)
 EstPath, = ax.plot([], [], "r--", linewidth=1.5, label="Estimate")
 EstPosition, = ax.plot([], [], "r^", markersize=6)
+LaunchPointMarker, = ax.plot([], [], "g*", markersize=14, label="Launch Point")
 UpperBeam, = ax.plot([0, 0], [0, 0], "b-", linewidth=1.5)
 LowerBeam, = ax.plot([0, 0], [0, 0], "b-", linewidth=1.5)
 Cone = Polygon([[0, 0], [0, 0], [0, 0]], color="b", alpha=0.15, edgecolor="none")
@@ -82,6 +86,16 @@ ax.set_ylim(BeamRange, -BeamRange)  # inverted so negative Z is up
 ax.set_aspect("equal", adjustable="box")
 ax.grid(True)
 ax.legend(loc="upper right")
+
+TgoHistory = Sim1Outputs["TgoHistory"]
+TgoAx = ax.inset_axes([0.07, 0.07, 0.3, 0.22])
+TgoLine, = TgoAx.plot([], [], "g-")
+TgoAx.set_xlim(Time[0], Time[-1])
+TgoValid = TgoHistory[~np.isnan(TgoHistory)]
+TgoAx.set_ylim(0, (TgoValid.max() if TgoValid.size else 1) * 1.05)
+TgoAx.set_title("Tgo (s)", fontsize=8)
+TgoAx.tick_params(labelsize=7)
+TgoAx.grid(True)
 
 AnimationStep = 400
 for i in range(0, len(Time), AnimationStep):
@@ -99,6 +113,12 @@ for i in range(0, len(Time), AnimationStep):
     TargetPosition.set_data([TargetX[i]], [TargetZ[i]])
     EstPath.set_data(EstState[0, : i + 1], EstState[1, : i + 1])
     EstPosition.set_data([EstState[0, i]], [EstState[1, i]])
+    ValidLaunch = np.flatnonzero(~np.isnan(LaunchPointHistory[0, : i + 1]))
+    if ValidLaunch.size:
+        LaunchPointMarker.set_data(
+            [LaunchPointHistory[0, ValidLaunch[-1]]], [LaunchPointHistory[1, ValidLaunch[-1]]]
+        )
+    TgoLine.set_data(Time[: i + 1], TgoHistory[: i + 1])
     ax.set_title(f"Radar Beam Sweep - t = {Time[i]:.2f} s")
     fig.canvas.draw_idle()
     plt.pause(0.001)
